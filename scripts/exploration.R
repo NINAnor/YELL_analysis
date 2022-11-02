@@ -1,6 +1,11 @@
 library(RSQLite)
 library(DBI)
 library(tidyverse)
+library(chron)
+library(lubridate)
+
+# See floor_date for aggregating per hours
+# group_by(Date=floor_date(DateTime, "1 hour"))
 
 
 sqlite <- dbDriver("SQLite")
@@ -15,33 +20,37 @@ birdnet <- dbFetch(res_bn)
 res_sn <- dbSendQuery(conn_snowscooter, "SELECT * FROM [/home/benjamin.cretois/Code/mloutput2sql/my_analysis/yellowstone/YELL_db.db] WHERE Confidence >= 0.99")
 sn <- dbFetch(res_sn)
 
-
+sn$date
 ##################
 # DATA WRANGLING #
 ##################
-
-sn$full_date = as.Date(paste(sn$date, sn$time_detection), format="%Y-%m-%d %H:%M:%S") # Maybe as.POSIXT is better?
+sn$full_date = as.POSIXct(paste(sn$date, sn$time_detection), format="%Y-%m-%d %H:%M:%S") # Maybe as.POSIXT is better?
+sn$full_date
 sn_clean <- sn %>% 
   select(confidence, location, full_date, filename) %>%
   mutate(label = "snowscooter") %>% 
   mutate("common_name" = "snowscooter")
 
-birdnet$full_date = as.Date(paste(birdnet$date, birdnet$time_detection), format="%Y-%m-%d %H:%M:%S")
+birdnet$full_date = as.POSIXct(paste(birdnet$date, birdnet$time_detection), format="%Y-%m-%d %H:%M:%S")
 bn_clean <- birdnet %>% 
   mutate(label = "bird") %>% 
   select(confidence = Confidence, location, full_date, filename, label, common_name = `Common Name`)
   
 prediction_df <- rbind(sn_clean, bn_clean)
 
-head(prediction_df)
+# Add other informative columns
+prediction_df <- prediction_df %>% mutate(is_weekend = is.weekend(prediction_df$full_date))
 
+head(prediction_df)
 #############################
 # PLOTS // DATA EXPLORATION #
 #############################
 
 # ! HAVE A WIND INDEX AS A COVARIATE !
 
+# Focusing on a single site YELLBTBC
 prediction_df %>% 
+  filter(location == "YELLBTBC") %>% 
   group_by(full_date, location, label) %>% 
   summarise(n = n()) %>%
   group_by(label, location) %>% 
@@ -52,6 +61,45 @@ prediction_df %>%
     facet_wrap(~location, scales="free")
 # Need to normalise the number of predictions (to have btw 0 and 1)
 
+prediction_df
+
+############
+# WEEKDAYS #
+############
+prediction_df %>% 
+  filter(location == "YELLBTBC") %>% 
+  filter(is_weekend == FALSE) %>% 
+  group_by(location, label, Date=as.POSIXct(floor_date(full_date, "2 hour"))) %>% 
+  summarise(n = n()) %>%
+  group_by(label, location) %>% 
+  mutate(n_perc = n / sum(n)) %>%  
+  mutate(id = as.integer(factor(floor_date(Date, "1 week")))) %>% 
+  ggplot(aes(x=Date, y=n_perc, col=label)) +
+  geom_point() +
+  geom_boxplot(aes(col=label, group=interaction(label,id), alpha=.5)) + 
+  #geom_line() +
+  scale_x_datetime(breaks = "1 day") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+############
+# WEEKENDS #
+############
+
+prediction_df %>% 
+  filter(location == "YELLBTBC") %>% 
+  filter(is_weekend == TRUE) %>% 
+  group_by(location, label, Date=as.POSIXct(floor_date(full_date, "1 hour"))) %>% 
+  summarise(n = n()) %>%
+  group_by(label, location) %>% 
+  mutate(n_perc = n / sum(n)) %>%  
+  mutate(id = as.integer(factor(floor_date(Date, "24 hour")))) %>% 
+  ggplot(aes(x=Date, y=n_perc, col=label)) +
+  geom_point() +
+  geom_boxplot(aes(col=label, group=interaction(label,id), alpha=.5)) + 
+  #geom_line() +
+  scale_x_datetime(breaks = "1 day") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ############################################
 # species richness vs number of detections #
 ############################################
