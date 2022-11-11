@@ -1,6 +1,7 @@
 library(RSQLite)
 library(DBI)
 library(tidyverse)
+install.packages("chron")
 library(chron)
 library(lubridate)
 
@@ -50,7 +51,7 @@ head(prediction_df)
 
 # Focusing on a single site YELLBTBC
 prediction_df %>% 
-  filter(location == "YELLBTBC") %>% 
+  #filter(location == "YELLBTBC") %>% 
   group_by(full_date, location, label) %>% 
   summarise(n = n()) %>%
   group_by(label, location) %>% 
@@ -93,13 +94,37 @@ prediction_df %>%
   summarise(n = n()) %>%
   group_by(label, location) %>% 
   mutate(n_perc = n / sum(n)) %>%  
-  mutate(id = as.integer(factor(floor_date(Date, "24 hour")))) %>% 
+  mutate(id = as.integer(factor(floor_date(Date, "2 days")))) %>% 
   ggplot(aes(x=Date, y=n_perc, col=label)) +
   geom_point() +
   geom_boxplot(aes(col=label, group=interaction(label,id), alpha=.5)) + 
   #geom_line() +
   scale_x_datetime(breaks = "1 day") + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# ONLY SNOWSCOOTERS
+############
+# WEEKENDS #
+############
+
+prediction_df %>% 
+  filter(location == "YELLCRPA") %>% 
+  filter(label == "snowscooter") %>% 
+  #filter(is_weekend == TRUE) %>% 
+  group_by(is_weekend, location, label, Date=as.POSIXct(floor_date(full_date, "1 hour"))) %>% 
+  summarise(n = n()) %>%
+  group_by(label, location) %>% 
+  mutate(n_perc = n / sum(n)) %>%  
+  mutate(id = as.integer(factor(floor_date(Date, "1 days")))) %>% 
+  ggplot(aes(x=Date, y=n,col=is_weekend)) +
+  geom_point() +
+  geom_boxplot(aes(col=is_weekend, group=interaction(is_weekend,id), alpha=.5), show.legend = FALSE) + 
+  #geom_line() +
+  scale_x_datetime(breaks = "1 day") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ylab("Number of detections") +
+  labs(col = "Weekend")
+
 ############################################
 # species richness vs number of detections #
 ############################################
@@ -135,6 +160,29 @@ sp_sn %>%
 
 
 
+################# FILTER A DATE #########################
+
+prediction_df %>% 
+  filter(location == "YELLCRPA") %>% 
+  filter(label == "snowscooter") %>% 
+  #filter(is_weekend == TRUE) %>% 
+  mutate(Date=as.POSIXct(full_date)) %>% 
+  filter(Date < as.POSIXct("2011-01-13 00:00:00")) %>% 
+  group_by(Date=as.POSIXct(floor_date(full_date, "1 hour"))) %>% 
+  summarise(n = n()) %>%
+  #summarise(n = n()) %>%
+  #group_by(label, location) %>% 
+  #mutate(n_perc = n / sum(n)) %>%  
+  #mutate(id = as.integer(factor(floor_date(Date, "1 hour")))) %>% 
+  ggplot(aes(x=Date, y=n)) +
+  geom_point() +
+  #geom_boxplot(aes(col=is_weekend, group=interaction(is_weekend,id), alpha=.5), show.legend = FALSE) + 
+  #geom_line() +
+  scale_x_datetime(breaks = "1 hour") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ylab("Number of detections") +
+  xlab("Hours")
+  labs(col = "Weekend")
 
 
 ######################
